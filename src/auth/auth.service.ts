@@ -3,9 +3,9 @@ import { PrismaClientKnownRequestError } from '@prisma/client/runtime';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { PrismaService } from './prisma/prisma.service';
-import { AuthDto } from './auth/dto/auth.dto';
-import { Msg, Jwt } from './auth/interfaces/auth.interface';
+import { PrismaService } from '../prisma/prisma.service';
+import { AuthDto } from '../auth/dto/auth.dto';
+import { Msg, Jwt } from '../auth/interfaces/auth.interface';
 
 @Injectable()
 export class AuthService {
@@ -34,5 +34,31 @@ export class AuthService {
       }
       throw error;
     }
+  }
+  async login(dto: AuthDto): Promise<Jwt> {
+    const user = await this.prisma.user.findUnique({
+      where: {
+        email: dto.email,
+      },
+    });
+    if (!user) throw new ForbiddenException('Email or password incorrect');
+    const isValid = await bcrypt.compare(dto.password, user.hashedPassword);
+    if (!isValid) throw new ForbiddenException('Email or password incorrect');
+    return this.generateJwt(user.id, user.email);
+  }
+
+  async generateJwt(userId: number, email: string): Promise<Jwt> {
+    const payload = {
+      sub: userId,
+      email,
+    };
+    const secret = this.config.get('JWT_SECRET');
+    const token = await this.jwt.signAsync(payload, {
+      expiresIn: '5m',
+      secret: secret,
+    });
+    return {
+      accessToken: token,
+    };
   }
 }
